@@ -1,61 +1,53 @@
+from __future__ import annotations
+
 import json
 import re
-import time
-
-from langchain_core.messages import HumanMessage, SystemMessage
+from typing import Any
 
 from agentic_go_contributor.graph.state import AgentState
-from agentic_go_contributor.llm import get_llm
+from agentic_go_contributor.services import LLMService
+
+_SYSTEM = "You analyze GitHub issues and output JSON only."
 
 
-def analyze_issue(state: AgentState) -> dict:
-    issue = state["issue"]
-    llm = get_llm()
+class AnalyzeIssueNode:
+    def __init__(self, llm: LLMService) -> None:
+        self._llm = llm
 
-    title = issue.get("title", "")
-    body = issue.get("body", "")
-    labels = ", ".join(issue.get("labels", []))
-    comments = "\n".join(c["author"] + ": " + c["body"] for c in issue.get("comments", [])) or "None"
+    def __call__(self, state: AgentState) -> dict[str, Any]:
+        issue = state["issue"]
+        title = issue.get("title", "")
+        body = issue.get("body", "")
+        labels = ", ".join(issue.get("labels", []))
+        comments_lines = [
+            f"{c['author']}: {c['body']}" for c in issue.get("comments", [])
+        ]
+        comments = "\n".join(comments_lines) or "None"
 
-    system = "You analyze GitHub issues and output JSON only."
-    user = (
-        "Classify this GitHub issue.\n\n"
-        "Title: " + title + "\n"
-        "Body: " + body + "\n"
-        "Labels: " + labels + "\n\n"
-        "Comments: " + comments + "\n\n"
-        'Output valid JSON with these fields:\n'
-        '- "issue_type": "bug", "feature", or "refactor"\n'
-        '- "summary": one-sentence summary of expected behavior\n'
-        '- "constraints": list of specific requirements or constraints\n\n'
-        "JSON:"
-    )
+        user = (
+            "Classify this GitHub issue.\n\n"
+            f"Title: {title}\n"
+            f"Body: {body}\n"
+            f"Labels: {labels}\n\n"
+            f"Comments: {comments}\n\n"
+            'Output valid JSON with these fields:\n'
+            '- "issue_type": "bug", "feature", or "refactor"\n'
+            '- "summary": one-sentence summary of expected behavior\n'
+            '- "constraints": list of specific requirements or constraints\n\n'
+            "JSON:"
+        )
 
-    for retry in range(3):
-        try:
-            result = llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
-            text = result.content
-            if text.strip():
-                break
-        except Exception as e:
-            if retry == 2:
-                raise
-            err = str(e)
-            if "429" in err or "503" in err:
-                time.sleep(2 ** retry * 5)
-                continue
-            time.sleep(2)
+        text = self._llm.invoke(_SYSTEM, user)
+        parsed = _parse_json(text)
 
-    parsed = _parse_json(text)
-
-    return {
-        "issue_type": parsed.get("issue_type", "bug"),
-        "issue_summary": parsed.get("summary", ""),
-        "issue_constraints": parsed.get("constraints", []),
-    }
+        return {
+            "issue_type": parsed.get("issue_type", "bug"),
+            "issue_summary": parsed.get("summary", ""),
+            "issue_constraints": parsed.get("constraints", []),
+        }
 
 
-def _parse_json(text: str) -> dict:
+def _parse_json(text: str) -> dict[str, Any]:
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:

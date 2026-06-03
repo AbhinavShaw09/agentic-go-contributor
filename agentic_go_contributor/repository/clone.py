@@ -1,14 +1,14 @@
-import os
 import subprocess
 import tempfile
 from pathlib import Path
 
+from agentic_go_contributor.utils.repo_url import parse_repo_url
 
 REPOS_CACHE = Path(tempfile.gettempdir()) / "repos"
 
 
 def clone_repo(repo_url: str) -> str:
-    owner, repo = _parse_repo(repo_url)
+    owner, repo = parse_repo_url(repo_url)
     repo_path = REPOS_CACHE / owner / repo
 
     if repo_path.exists():
@@ -26,17 +26,6 @@ def clone_repo(repo_url: str) -> str:
     )
 
     return str(repo_path)
-
-
-def _parse_repo(repo_url: str) -> tuple[str, str]:
-    repo_url = repo_url.rstrip("/")
-    if repo_url.startswith("http"):
-        parts = repo_url.rstrip(".git").split("/")
-        return parts[-2], parts[-1]
-    if "/" in repo_url:
-        parts = repo_url.split("/")
-        return parts[0], parts[1]
-    raise ValueError(f"Unable to parse repo URL: {repo_url}")
 
 
 def _git_pull(repo_path: Path) -> None:
@@ -60,16 +49,6 @@ def get_diff(repo_path: str) -> str:
         text=True,
     )
     return result.stdout
-
-
-def stage_all_and_commit(repo_path: str, message: str = "wip") -> None:
-    subprocess.run(["git", "add", "-A"], cwd=repo_path, check=True)
-    subprocess.run(
-        ["git", "commit", "--allow-empty", "-m", message],
-        cwd=repo_path,
-        capture_output=True,
-        text=True,
-    )
 
 
 def reset_hard(repo_path: str) -> None:

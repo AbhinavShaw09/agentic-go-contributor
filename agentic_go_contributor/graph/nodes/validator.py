@@ -1,53 +1,45 @@
-import subprocess
+from __future__ import annotations
+
+from typing import Any
 
 from agentic_go_contributor.graph.state import AgentState
+from agentic_go_contributor.services import RepositoryService
 
 
-def validate(state: AgentState) -> dict:
-    repo_path = state["local_repo_path"]
-    attempts = state.get("validation_attempts", 0)
-    baseline = state.get("baseline_test_errors", [])
+class ValidateNode:
+    def __init__(self, repo: RepositoryService) -> None:
+        self._repo = repo
 
-    test_result = subprocess.run(
-        ["go", "test", "./..."],
-        cwd=repo_path,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    def __call__(self, state: AgentState) -> dict[str, Any]:
+        repo_path = state["local_repo_path"]
+        attempts = state.get("validation_attempts", 0)
+        baseline = state.get("baseline_test_errors", [])
 
-    build_result = subprocess.run(
-        ["go", "build", "./..."],
-        cwd=repo_path,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+        test_rc, test_output = self._repo.run_go_test(repo_path)
+        build_rc, build_output = self._repo.run_go_build(repo_path)
 
-    new_failures = _get_new_failures(test_result.stdout + test_result.stderr, baseline)
-    build_failed = build_result.returncode != 0
+        new_failures = _get_new_failures(test_output, baseline)
+        build_failed = build_rc != 0
 
-    if build_failed:
-        errors = [_truncate(build_result.stdout + build_result.stderr, 2000)]
-    elif new_failures:
-        errors = [_truncate(test_result.stdout + test_result.stderr, 2000)]
-    else:
-        errors = []
+        if build_failed:
+            errors = [_truncate(build_output)]
+        elif new_failures:
+            errors = [_truncate(test_output)]
+        else:
+            errors = []
 
-    success = not build_failed and not new_failures
-
-    return {
-        "validation_success": success,
-        "validation_errors": errors,
-        "validation_attempts": attempts + 1,
-    }
+        return {
+            "validation_success": not build_failed and not new_failures,
+            "validation_errors": errors,
+            "validation_attempts": attempts + 1,
+        }
 
 
 def _get_new_failures(output: str, baseline: list[str]) -> list[str]:
     if not baseline:
         return []
 
-    current = set()
+    current: set[str] = set()
     for line in output.split("\n"):
         if line.startswith("--- FAIL:"):
             parts = line.split()

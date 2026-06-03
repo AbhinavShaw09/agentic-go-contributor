@@ -196,8 +196,9 @@ Console output:
 ```
 agentic_go_contributor/
 ├── cli.py                   # click CLI entry point
-├── llm.py                   # LangChain + OpenRouter helper
+├── services.py              # Service classes + DI container
 ├── graph/
+│   ├── base.py              # GraphNode protocol
 │   ├── state.py             # AgentState TypedDict
 │   ├── graph.py             # LangGraph wiring + repair loop
 │   └── nodes/
@@ -207,18 +208,16 @@ agentic_go_contributor/
 │       ├── repo_explorer.py # grep for relevant files/tests
 │       ├── planner.py       # LLM step-by-step plan
 │       ├── coding_agent.py  # SEARCH/REPLACE code generation
-│       └── validator.py     # go test + go build
+│       ├── validator.py     # go test + go build
+│       └── human_review.py  # File-based IPC review
 ├── github/
-│   └── issue_service.py     # httpx → GitHub REST API
-├── review/
-│   └── ipc.py               # File-based IPC (review.json / decision.json)
+│   └── issue_service.py     # (replaced by GitHubService)
 ├── repository/
 │   ├── clone.py             # git clone with caching
 │   └── code_search.py       # grep/ripgrep wrappers
-└── prompts/
-    ├── issue_analyzer.md
-    ├── planner.md
-    └── coding_agent.md
+└── utils/
+    ├── constants.py          # Shared timeouts, retry limits
+    └── repo_url.py           # parse_repo_url() helper
 
 dashboard/                        # Next.js review dashboard
 ├── package.json
