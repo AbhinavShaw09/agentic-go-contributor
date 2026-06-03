@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -9,22 +10,28 @@ from dotenv import load_dotenv
 
 from agentic_go_contributor.graph.graph import build_graph
 from agentic_go_contributor.graph.state import AgentState
-
+from agentic_go_contributor.review.ipc import init_run, write_completed
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / "etc" / ".env")
 
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "http://localhost:3000")
 RESULTS_DIR = Path(__file__).parent.parent / "results"
 
 
 @click.command()
 @click.option("--repo", required=True, help="Repository URL or owner/name (e.g. spf13/cobra)")
 @click.option("--issue", required=True, type=int, help="Issue number (e.g. 1234)")
-def main(repo: str, issue: int) -> None:
+@click.option("--run-id", default="", help="Unique run ID (auto-generated if empty)")
+def main(repo: str, issue: int, run_id: str) -> None:
     if "OPENROUTER_API_KEY" not in os.environ:
         click.echo("Error: OPENROUTER_API_KEY environment variable is required", err=True)
         sys.exit(1)
 
+    if not run_id:
+        run_id = str(uuid.uuid4())[:8]
+
     initial_state: AgentState = {
+        "run_id": run_id,
         "repo_url": repo,
         "issue_number": issue,
         "local_repo_path": "",
@@ -41,9 +48,16 @@ def main(repo: str, issue: int) -> None:
         "validation_attempts": 0,
         "validation_success": False,
         "validation_errors": [],
+        "human_approved": False,
+        "human_feedback": "",
     }
 
-    click.echo(f"🚀 Resolving issue #{issue} in {repo}...\n")
+    click.echo(f"🚀 Resolving issue #{issue} in {repo}...")
+    click.echo(f"   Run ID: {run_id}")
+    click.echo(f"   Dashboard: {DASHBOARD_URL}/review/{run_id}\n")
+
+    # Init the IPC run directory
+    init_run(run_id, repo, issue)
 
     try:
         graph = build_graph()
@@ -54,6 +68,9 @@ def main(repo: str, issue: int) -> None:
 
     _print_output(final_state)
     _save_results(final_state)
+    write_completed(run_id, final_state)
+    dashboard_url = f"{DASHBOARD_URL}/review/{run_id}"
+    click.echo(f"\n🔗 Dashboard: {dashboard_url}")
 
 
 def _print_output(state: AgentState) -> None:
@@ -71,6 +88,10 @@ def _print_output(state: AgentState) -> None:
         click.echo("✓ Tests passed")
     elif state.get("validation_errors"):
         click.echo("✗ Tests failed (check output below)")
+    if state.get("human_approved"):
+        click.echo("✓ Human approved")
+    elif state.get("human_feedback"):
+        click.echo(f"✗ Human rejected: {state['human_feedback'][:100]}")
 
     click.echo("")
     click.echo("--- Patch ---")
@@ -80,7 +101,7 @@ def _print_output(state: AgentState) -> None:
     click.echo("--- Summary ---")
     click.echo(f"Issue: #{state.get('issue_number', '?')}")
     click.echo(f"Type: {state.get('issue_type', '?')}")
-    click.echo(f"Files changed: {', '.join(state.get('relevant_files', [])) or 'none'}")
+    click.echo(f"Human approved: {state.get('human_approved', False)}")
     click.echo(f"Attempts: {state.get('validation_attempts', 0)}")
 
     if state.get("validation_success"):
@@ -110,22 +131,20 @@ def _save_results(state: AgentState) -> None:
         "validation_success": state.get("validation_success", False),
         "validation_attempts": state.get("validation_attempts", 0),
         "validation_errors": state.get("validation_errors", []),
+        "human_approved": state.get("human_approved", False),
+        "human_feedback": state.get("human_feedback", ""),
         "timestamp": ts,
     }
-
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
     if state.get("plan"):
         (run_dir / "plan.md").write_text(state["plan"] + "\n")
-
     patch = state.get("patch", "")
     (run_dir / "patch.diff").write_text(patch if patch else "(no patch generated)\n")
-
     if state.get("validation_errors"):
         (run_dir / "test_results.txt").write_text(
             "\n\n".join(state["validation_errors"]) + "\n"
         )
-
     click.echo(f"\n📁 Results saved to: {run_dir}")
 
 

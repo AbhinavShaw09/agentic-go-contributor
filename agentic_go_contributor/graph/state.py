@@ -2,6 +2,7 @@ from typing import TypedDict
 
 
 class AgentState(TypedDict):
+    run_id: str
     repo_url: str
     issue_number: int
     local_repo_path: str
@@ -25,3 +26,6 @@ class AgentState(TypedDict):
     validation_attempts: int
     validation_success: bool
     validation_errors: list[str]
+
+    human_approved: bool
+    human_feedback: str

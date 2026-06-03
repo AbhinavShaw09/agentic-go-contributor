@@ -2,7 +2,7 @@ REPO ?= spf13/cobra
 ISSUE ?= 1234
 IMAGE := agentic-go-contributor
 
-.PHONY: deps run docker-build docker-run clean
+.PHONY: deps run docker-build docker-run clean dashboard dashboard-deps
 
 deps:
 	poetry install
@@ -19,9 +19,16 @@ docker-run:
 	mkdir -p results && docker run --rm \
 		--env-file etc/.env \
 		-v "$$(PWD)/results:/app/results" \
+		-v "$$(PWD)/data:/app/data" \
 		$(IMAGE) \
 		--repo $(REPO) \
 		--issue $(ISSUE)
+
+dashboard-deps:
+	cd dashboard && npm install
+
+dashboard:
+	cd dashboard && npm run dev
 
 clean:
 	rm -rf __pycache__

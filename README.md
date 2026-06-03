@@ -5,48 +5,67 @@ A LangGraph-powered CLI agent that resolves GitHub issues in Go repositories end
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                      Docker Container                        │
-│                                                              │
-│  CLI: --repo spf13/cobra --issue 1234                        │
-│       │                                                      │
-│       ▼                                                      │
-│  ┌────────────────────────────────────────────────────┐      │
-│  │                 LangGraph Agent                    │      │
-│  │                                                    │      │
-│  │  fetch_issue ──▶ clone_repo ──▶ analyze_issue      │      │
-│  │       │              │               │             │      │
-│  │       ▼              ▼               ▼             │      │
-│  │  GitHub API      git clone      LLM classify       │      │
-│  │       │              │               │             │      │
-│  │       └──────────┬───┴───────────────┘             │      │
-│  │                  ▼                                 │      │
-│  │          explore_repo                              │      │
-│  │               │                                    │      │
-│  │               ▼                                    │      │
-│  │            planner                                 │      │
-│  │               │                                    │      │
-│  │               ▼                                    │      │
-│  │         coding_agent ──┐                           │      │
-│  │               │        │ (retry max 3)             │      │
-│  │               ▼        │                           │      │
-│  │           validator ────┘                          │      │
-│  │               │                                    │      │
-│  │               ▼                                    │      │
-│  │      ┌────────┴──────────┐                         │      │
-│  │      ▼                   ▼                         │      │
-│  │  success              failed                       │      │
-│  │  (save + exit)    (save + exit)                    │      │
-│  └────────────────────────────────────────────────────┘      │
-│                                                              │
-│  LLM: LangChain + OpenRouter   │  Code: Go + git             │
-│  Tools: httpx, grep, ripgrep   │  Env: etc/.env              │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         Docker Container                         │
+│                                                                  │
+│  CLI: --repo spf13/cobra --issue 1234 --run-id abc123            │
+│       │                                                          │
+│       ▼                                                          │
+│  ┌───────────────────────────────────────────────────────┐       │
+│  │                 LangGraph Agent                        │       │
+│  │                                                       │       │
+│  │  fetch_issue ──▶ clone_repo ──▶ analyze_issue         │       │
+│  │       │              │               │                │       │
+│  │       ▼              ▼               ▼                │       │
+│  │  GitHub API      git clone      LLM classify          │       │
+│  │       │              │               │                │       │
+│  │       └──────────┬───┴───────────────┘                │       │
+│  │                  ▼                                    │       │
+│  │          explore_repo                                 │       │
+│  │               │                                       │       │
+│  │               ▼                                       │       │
+│  │            planner                                    │       │
+│  │               │                                       │       │
+│  │               ▼                                       │       │
+│  │         coding_agent ──┐                              │       │
+│  │               │        │ (retry max 3)                │       │
+│  │               ▼        │                              │       │
+│  │           validator ────┘                             │       │
+│  │               │                                       │       │
+│  │               ▼                                       │       │
+│  │        human_review ────┐                             │       │
+│  │          │              │                             │       │
+│  │    ┌─────┴──────┐      │                              │       │
+│  │    ▼            ▼      │                              │       │
+│  │ approved    rejected ──┘                              │       │
+│  │ (save +     (retry max 3,                             │       │
+│  │  exit)       else exit)                               │       │
+│  └───────────────────────────────────────────────────────┘       │
+│                      │                             ▲              │
+│                      ▼ data/runs/<run_id>/          │              │
+│              ┌───────────────────────┐              │              │
+│              │  review.json          │──────────────┘              │
+│              │  decision.json        │  (poll every 5s)           │
+│              │  status.json          │                            │
+│              │  summary.json         │                            │
+│              └───────────────────────┘                            │
+│                      │                                            │
+│                      ▼ HTTP                                       │
+│  ┌────────────────────────────────────────┐                       │
+│  │       Next.js Dashboard (port 3000)      │                       │
+│  │                                          │                       │
+│  │  /          — list runs + start form     │                       │
+│  │  /review/abc123 — approve / reject       │                       │
+│  └──────────────────────────────────────────┘                       │
+│                                                                     │
+│  LLM: LangChain + OpenRouter   │  IPC: File-based (data/runs/)     │
+│  Tools: httpx, grep, ripgrep   │  Env: etc/.env                    │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## How It Works
 
-The agent runs 7 sequential nodes in a LangGraph state machine:
+The agent runs 8 sequential nodes in a LangGraph state machine:
 
 | Node | What it does | Tooling |
 |------|-------------|---------|
@@ -57,17 +76,19 @@ The agent runs 7 sequential nodes in a LangGraph state machine:
 | `planner` | Generates a step-by-step implementation plan from issue + file context | LLM (OpenRouter) |
 | `coding_agent` | Generates SEARCH/REPLACE blocks to modify source code | LLM (OpenRouter) |
 | `validator` | Runs `go test ./...` and `go build ./...`; compares against pre-fix baseline to avoid false positives | Go toolchain |
+| `human_review` | Writes patch + plan to `data/runs/<id>/review.json`, polls for `decision.json` | File-based IPC |
 
-If validation fails, the repair loop feeds errors back to the coding agent (up to 3 attempts).
+If validation fails, the repair loop feeds errors back to the coding agent (up to 3 attempts). After validation passes (or max attempts), the agent writes a review request to a shared `data/` directory and waits. The Next.js dashboard reads it and presents the patch for approval. The human's decision is written as `decision.json`, which the agent picks up (polling every 5s).
 
 ## Current State
 
-- **Complete 7-node LangGraph pipeline** — runs end-to-end
+- **Complete 8-node LangGraph pipeline** — runs end-to-end
 - **Baseline test comparison** — pre-existing test failures don't trigger false repair loops
 - **Dockerized** — single container with Go, Python, git
 - **Model-agnostic** — switch models via `OPENROUTER_MODEL` env var
 - **Results saved** — each run produces a timestamped output folder
 - **Code generation** — uses SEARCH/REPLACE block format (same approach as Aider/Cursor)
+- **Dashboard with human-in-the-loop** — CLI writes to `data/runs/`, Next.js dashboard reads + displays, decision flows back via file
 
 ### Limitations (V2 candidates)
 
@@ -98,9 +119,14 @@ GITHUB_TOKEN=ghp_...
 OPENROUTER_MODEL=openai/gpt-4o-mini
 EOF
 
-# 3. Build and run
+# 3. Start the dashboard (terminal 1)
+make dashboard
+
+# 4. Run the agent (terminal 2)
 make docker-build
 make docker-run REPO=spf13/cobra ISSUE=1234
+
+# 5. Open http://localhost:3000/review/<run-id> when prompted
 ```
 
 ### Commands
@@ -113,6 +139,10 @@ make run REPO=spf13/cobra ISSUE=1234
 # Run in Docker
 make docker-build
 make docker-run REPO=spf13/cobra ISSUE=1234
+
+# Start the dashboard (runs on http://localhost:3000)
+make dashboard-deps
+make dashboard
 
 # Override the model
 OPENROUTER_MODEL=openai/gpt-4o make docker-run REPO=spf13/cobra ISSUE=1234
@@ -137,13 +167,28 @@ results/
 Console output:
 
 ```
+🚀 Resolving issue #1234 in spf13/cobra...
+   Run ID: abc12345
+   Dashboard: http://localhost:3000/review/abc12345
+
 ✓ Issue analyzed (bug: nil pointer dereference on Execute)
 ✓ Repository explored (3 files, 2 tests)
 ✓ Plan generated
 ✓ Code modified
 ✓ Tests passed
 
+  📋 Patch ready for review!
+  🔗 Open: http://localhost:3000/review/abc12345
+  ⏳ Waiting for decision (up to 30 min)...
+
+  ✅ Patch approved via dashboard
+
+--- Patch ---
+...
+
 📁 Results saved to: results/spf13_cobra_issue-1234_2026-06-03_17-56-48/
+
+🔗 Dashboard: http://localhost:3000/review/abc12345
 ```
 
 ## Project Structure
@@ -165,6 +210,8 @@ agentic_go_contributor/
 │       └── validator.py     # go test + go build
 ├── github/
 │   └── issue_service.py     # httpx → GitHub REST API
+├── review/
+│   └── ipc.py               # File-based IPC (review.json / decision.json)
 ├── repository/
 │   ├── clone.py             # git clone with caching
 │   └── code_search.py       # grep/ripgrep wrappers
@@ -172,6 +219,23 @@ agentic_go_contributor/
     ├── issue_analyzer.md
     ├── planner.md
     └── coding_agent.md
+
+dashboard/                        # Next.js review dashboard
+├── package.json
+├── app/
+│   ├── page.tsx                  # Dashboard — list runs
+│   ├── review/[runId]/page.tsx   # Review page — approve / reject
+│   └── api/runs/[runId]/route.ts # API — read run + write decision
+└── lib/runs.ts                   # Filesystem read/write helpers
+
+data/                             # Shared IPC directory
+└── runs/<run_id>/
+    ├── status.json               # running / pending_review / approved / completed
+    ├── review.json               # patch + plan + errors (agent → dashboard)
+    ├── decision.json             # approved + feedback (dashboard → agent)
+    ├── summary.json              # final result
+    ├── plan.md / patch.diff      # artifacts
+    └── test_results.txt          # validation output
 ```
 
 ## Config
@@ -182,3 +246,4 @@ agentic_go_contributor/
 | `GITHUB_TOKEN` | (required) | GitHub personal access token |
 | `OPENROUTER_MODEL` | `openai/gpt-4o-mini` | Model for all LLM calls |
 | `OPENROUTER_MAX_TOKENS` | `1024` | Max tokens per LLM response |
+| `DASHBOARD_URL` | `http://localhost:3000` | URL printed by CLI for review link |

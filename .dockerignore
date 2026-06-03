@@ -5,3 +5,6 @@ __pycache__
 .git
 *.md
 !docs/plan.md
+data/
+dashboard/node_modules/
+dashboard/.next/
