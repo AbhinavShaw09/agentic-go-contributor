@@ -6,61 +6,61 @@ A LangGraph-powered CLI agent that resolves GitHub issues in Go repositories end
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Docker Container                         │
-│                                                                  │
-│  CLI: --repo spf13/cobra --issue 1234 --run-id abc123            │
-│       │                                                          │
-│       ▼                                                          │
-│  ┌───────────────────────────────────────────────────────┐       │
-│  │                 LangGraph Agent                        │       │
-│  │                                                       │       │
-│  │  fetch_issue ──▶ clone_repo ──▶ analyze_issue         │       │
-│  │       │              │               │                │       │
-│  │       ▼              ▼               ▼                │       │
-│  │  GitHub API      git clone      LLM classify          │       │
-│  │       │              │               │                │       │
-│  │       └──────────┬───┴───────────────┘                │       │
-│  │                  ▼                                    │       │
-│  │          explore_repo                                 │       │
-│  │               │                                       │       │
-│  │               ▼                                       │       │
-│  │            planner                                    │       │
-│  │               │                                       │       │
-│  │               ▼                                       │       │
-│  │         coding_agent ──┐                              │       │
-│  │               │        │ (retry max 3)                │       │
-│  │               ▼        │                              │       │
-│  │           validator ────┘                             │       │
-│  │               │                                       │       │
-│  │               ▼                                       │       │
-│  │        human_review ────┐                             │       │
-│  │          │              │                             │       │
-│  │    ┌─────┴──────┐      │                              │       │
-│  │    ▼            ▼      │                              │       │
-│  │ approved    rejected ──┘                              │       │
-│  │ (save +     (retry max 3,                             │       │
-│  │  exit)       else exit)                               │       │
-│  └───────────────────────────────────────────────────────┘       │
-│                      │                             ▲              │
-│                      ▼ data/runs/<run_id>/          │              │
-│              ┌───────────────────────┐              │              │
-│              │  review.json          │──────────────┘              │
-│              │  decision.json        │  (poll every 5s)           │
-│              │  status.json          │                            │
-│              │  summary.json         │                            │
-│              └───────────────────────┘                            │
-│                      │                                            │
-│                      ▼ HTTP                                       │
-│  ┌────────────────────────────────────────┐                       │
-│  │       Next.js Dashboard (port 3000)      │                       │
-│  │                                          │                       │
-│  │  /          — list runs + start form     │                       │
-│  │  /review/abc123 — approve / reject       │                       │
-│  └──────────────────────────────────────────┘                       │
-│                                                                     │
-│  LLM: LangChain + OpenRouter   │  IPC: File-based (data/runs/)     │
-│  Tools: httpx, grep, ripgrep   │  Env: etc/.env                    │
-└─────────────────────────────────────────────────────────────────────┘
+│                         Docker Container                        │
+│                                                                 │
+│  CLI: --repo spf13/cobra --issue 1234 --run-id abc123           │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌───────────────────────────────────────────────────────┐      │
+│  │                 LangGraph Agent                       │      │
+│  │                                                       │      │
+│  │  fetch_issue ──▶ clone_repo ──▶ analyze_issue         │      │
+│  │       │              │               │                │      │
+│  │       ▼              ▼               ▼                │      │
+│  │  GitHub API      git clone      LLM classify          │      │
+│  │       │              │               │                │      │
+│  │       └──────────┬───┴───────────────┘                │      │
+│  │                  ▼                                    │      │
+│  │          explore_repo                                 │      │
+│  │               │                                       │      │
+│  │               ▼                                       │      │
+│  │            planner                                    │      │
+│  │               │                                       │      │
+│  │               ▼                                       │      │
+│  │         coding_agent ──┐                              │      │
+│  │               │        │ (retry max 3)                │      │
+│  │               ▼        │                              │      │
+│  │           validator ────┘                             │      │
+│  │               │                                       │      │
+│  │               ▼                                       │      │
+│  │        human_review ────┐                             │      │
+│  │          │              │                             │      │
+│  │    ┌─────┴──────┐      │                              │      │
+│  │    ▼            ▼      │                              │      │
+│  │ approved    rejected ──┘                              │      │
+│  │ (save +     (retry max 3,                             │      │
+│  │  exit)       else exit)                               │      │
+│  └───────────────────────────────────────────────────────┘      │
+│                      │                              ▲           │
+│                      ▼ data/runs/<run_id>/          │           │
+│              ┌───────────────────────┐              │           │
+│              │  review.json          │──────────────┘           │
+│              │  decision.json        │  (poll every 5s)         │
+│              │  status.json          │                          │
+│              │  summary.json         │                          │
+│              └───────────────────────┘                          │
+│                      │                                          │
+│                      ▼ HTTP                                     │
+│  ┌────────────────────────────────────────┐                     │
+│  │       Next.js Dashboard (port 3000)      │                   │
+│  │                                          │                   │
+│  │  /          — list runs + start form     │                   │
+│  │  /review/abc123 — approve / reject       │                   │
+│  └──────────────────────────────────────────┘                   │
+│                                                                 │
+│  LLM: LangChain + OpenRouter   │  IPC: File-based (data/runs/)  │
+│  Tools: httpx, grep, ripgrep   │  Env: etc/.env                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## How It Works
