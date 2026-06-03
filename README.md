@@ -6,37 +6,37 @@ A LangGraph-powered CLI agent that resolves GitHub issues in Go repositories end
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                      Docker Container                         │
+│                      Docker Container                        │
 │                                                              │
 │  CLI: --repo spf13/cobra --issue 1234                        │
 │       │                                                      │
 │       ▼                                                      │
 │  ┌────────────────────────────────────────────────────┐      │
-│  │                 LangGraph Agent                      │      │
-│  │                                                      │      │
-│  │  fetch_issue ──▶ clone_repo ──▶ analyze_issue        │      │
-│  │       │              │               │               │      │
-│  │       ▼              ▼               ▼               │      │
-│  │  GitHub API      git clone      LLM classify         │      │
-│  │       │              │               │               │      │
-│  │       └──────────┬───┴───────────────┘               │      │
-│  │                  ▼                                   │      │
-│  │          explore_repo                                 │      │
-│  │               │                                       │      │
-│  │               ▼                                       │      │
-│  │            planner                                    │      │
-│  │               │                                       │      │
-│  │               ▼                                       │      │
-│  │         coding_agent ──┐                              │      │
-│  │               │        │ (retry max 3)                │      │
-│  │               ▼        │                              │      │
-│  │           validator ────┘                              │      │
-│  │               │                                       │      │
-│  │               ▼                                       │      │
-│  │      ┌────────┴──────────┐                             │      │
-│  │      ▼                   ▼                             │      │
-│  │  success              failed                           │      │
-│  │  (save + exit)    (save + exit)                       │      │
+│  │                 LangGraph Agent                    │      │
+│  │                                                    │      │
+│  │  fetch_issue ──▶ clone_repo ──▶ analyze_issue      │      │
+│  │       │              │               │             │      │
+│  │       ▼              ▼               ▼             │      │
+│  │  GitHub API      git clone      LLM classify       │      │
+│  │       │              │               │             │      │
+│  │       └──────────┬───┴───────────────┘             │      │
+│  │                  ▼                                 │      │
+│  │          explore_repo                              │      │
+│  │               │                                    │      │
+│  │               ▼                                    │      │
+│  │            planner                                 │      │
+│  │               │                                    │      │
+│  │               ▼                                    │      │
+│  │         coding_agent ──┐                           │      │
+│  │               │        │ (retry max 3)             │      │
+│  │               ▼        │                           │      │
+│  │           validator ────┘                          │      │
+│  │               │                                    │      │
+│  │               ▼                                    │      │
+│  │      ┌────────┴──────────┐                         │      │
+│  │      ▼                   ▼                         │      │
+│  │  success              failed                       │      │
+│  │  (save + exit)    (save + exit)                    │      │
 │  └────────────────────────────────────────────────────┘      │
 │                                                              │
 │  LLM: LangChain + OpenRouter   │  Code: Go + git             │
