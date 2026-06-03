@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "agentic-go-contributor"
+version = "0.1.0"
+description = "LangGraph-powered agent for resolving GitHub issues in Go repositories"
+authors = []
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+langgraph = "^0.2"
+langchain = "^0.3"
+langchain-openai = "^0.2"
+click = "^8.1"
+pydantic = "^2.0"
+httpx = "^0.27"
+pyyaml = "^6.0"
+python-dotenv = "^1.0"
+
+[tool.poetry.scripts]
+agentic-go-contributor = "agentic_go_contributor.cli:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
